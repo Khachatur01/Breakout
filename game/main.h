@@ -51,7 +51,7 @@ public:
 
         if (point == this->A || point == this->B) {
             return true;
-        } else if (b == 0/* != (point.x - this->A.x == 0) && (point.y < this->A.y || point.y > this->B.y)*/) {
+        } else if (b == 0) {
             if (point.y >= this->B.y && point.y <= this->A.y && point.x - this->A.x == 0) {
                 return true;
             } else {
