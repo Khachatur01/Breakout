@@ -4,6 +4,17 @@
 #include <unistd.h>
 #include <vector>
 
+enum Direction {
+    TOP_LEFT,
+    TOP,
+    TOP_RIGHT,
+    RIGHT,
+    BOTTOM_RIGHT,
+    BOTTOM,
+    BOTTOM_LEFT,
+    LEFT
+};
+
 class Point {
 public:
     int16_t x;
@@ -34,9 +45,19 @@ public:
         this->B = B;
     }
 
-    bool contains_point(Point point) { /* A is the point */
+    bool contains_point(Point point) const { /* A is the point */
         int16_t a = this->B.y - this->A.y;
         int16_t b = this->B.x - this->A.x;
+
+        if (point == this->A || point == this->B) {
+            return true;
+        } else if (b == 0/* != (point.x - this->A.x == 0) && (point.y < this->A.y || point.y > this->B.y)*/) {
+            if (point.y >= this->B.y && point.y <= this->A.y && point.x - this->A.x == 0) {
+                return true;
+            } else {
+                return false;
+            }
+        }
 
         return
             (point.y - this->A.y) / double(point.x - this->A.x) == a / (double)b &&
@@ -44,14 +65,18 @@ public:
             point.y >= this->A.y && point.y <= this->B.y;
     }
 
-    bool intersects_with(Line line) {
+    bool intersects_with(Line line) const {
         if (line.contains_point(this->A) || line.contains_point(this->B))
             return true;
 
         int32_t determinant = (this->A.x - this->B.x) * (line.A.y - line.B.y) - (this->A.y - this->B.y) * (line.A.x - line.B.x);
 
+        // The lines are parallel.
+        if (determinant == 0) return false;
+
         // Get the x and y
-        int16_t pre = (this->A.x * this->B.y - this->A.y * this->B.x), post = int16_t(line.A.x * line.B.y - line.A.y * line.A.x);
+        int16_t pre = this->A.x * this->B.y - this->A.y * this->B.x;
+        int16_t post = line.A.x * line.B.y - line.A.y * line.A.x;
         int16_t x = (pre * (line.A.x - line.B.x) - (this->A.x - this->B.x) * post) / determinant;
         int16_t y = (pre * (line.A.y - line.B.y) - (this->A.y - this->B.y) * post) / determinant;
 
@@ -60,8 +85,7 @@ public:
              x < std::min(line.A.x, line.B.x) || x > std::max(line.A.x, line.B.x) ) return false;
         if ( y < std::min(this->A.y, this->B.y) || y > std::max(this->A.y, this->B.y) ||
              y < std::min(line.A.y, line.B.y) || y > std::max(line.A.y, line.B.y) ) return false;
-        // The lines are parallel.
-        if (determinant == 0) return false;
+
 
         return true;
     }
@@ -78,9 +102,28 @@ private:
     Point ball = Point(0, 0);
     Point racquet = Point(0, 0);
     uint8_t racquet_length = 5;
-    Point delta_step = Point(1, -1);
+    Point delta_step = Point(0, -1);
     uint8_t aspect_ratio = 21 / 9; /* 21 and 9 are height and width of console character */
     uint32_t delay = 200 * 1000;
+
+    static Direction get_direction(const Point delta) {
+        if (delta.x < 0 && delta.y < 0)
+            return Direction::TOP_LEFT;
+        else if (delta.x == 0 && delta.y < 0)
+            return Direction::TOP;
+        else if (delta.x > 0 && delta.y < 0)
+            return Direction::TOP_RIGHT;
+        else if (delta.x > 0 && delta.y == 0)
+            return Direction::RIGHT;
+        else if (delta.x > 0 && delta.y > 0)
+            return Direction::BOTTOM_RIGHT;
+        else if (delta.x == 0 && delta.y > 0)
+            return Direction::BOTTOM;
+        else if (delta.x < 0 && delta.y > 0)
+            return Direction::BOTTOM_LEFT;
+        else if (delta.x < 0 && delta.y == 0)
+            return Direction::LEFT;
+    }
 
     void to_left() {
         this->racquet.x--;
@@ -93,21 +136,89 @@ private:
         Point next_ball(this->ball.x, this->ball.y);
         next_ball += this->delta_step;
 
+        Line top_wall(
+                Point(-1, -1),
+                Point(this->width, -1)
+        );
+        Line left_wall(
+                Point(-1, -1),
+                Point(-1, this->height)
+        );
+        Line right_wall(
+                Point(this->width, -1),
+                Point(this->width, this->height)
+        );
         Line racquet_line(
-        Point(this->racquet.x - this->racquet_length / 2, this->racquet.y),
-        Point(this->racquet.x + this->racquet_length / 2, this->racquet.y)
+            Point(this->racquet.x - this->racquet_length / 2 - 1, this->racquet.y),
+            Point(this->racquet.x + this->racquet_length / 2, this->racquet.y)
         );
         Line ball_trajectory(this->ball,next_ball);
 
         if (ball_trajectory.intersects_with(racquet_line)) {
             this->delta_step.x = this->ball.x - this->racquet.x;
-            this->delta_step.y = (int16_t)-this->delta_step.y;
-        } else if (this->ball.y < 1) {
-            this->delta_step.y = (int16_t)-this->delta_step.y;
-        } else if (this->ball.x >= this->width - 1 || this->ball.x <= 0) {
-            this->delta_step.x = (int16_t)-this->delta_step.x;
+            this->delta_step.y = -this->delta_step.y;
         } else if (this->ball.y >= this->height) {
             this->game_over = true;
+        } else if (ball_trajectory.intersects_with(top_wall)) {
+            this->delta_step.y = -this->delta_step.y;
+        } else if (ball_trajectory.intersects_with(left_wall) || ball_trajectory.intersects_with(right_wall)) {
+            this->delta_step.x = -this->delta_step.x;
+        } else {
+            for (int16_t i = 0; i < this->height; ++i) {
+                for (int16_t j = 0; j < this->width; ++j) {
+                    if (this->board[i][j] == this->BORDER || this->board[i][j] == this->BRICK) {
+                        if (ball_trajectory.A.x == 20 && ball_trajectory.A.y == 5 && j == 20 && i == 5) {
+                            std::cout << "";
+                        }
+                        if (ball_trajectory.contains_point(Point(j, i))) {
+                            Direction ball_direction = Breakout::get_direction(this->delta_step);
+
+                            switch (ball_direction) {
+                                case TOP:
+                                case BOTTOM:
+                                    this->delta_step.y = -this->delta_step.y;
+                                    break;
+                                case LEFT:
+                                case RIGHT:
+                                    this->delta_step.x = -this->delta_step.x;
+                                    break;
+                                case Direction::TOP_LEFT:
+                                    if (this->board[i + 1][j] == this->BORDER || this->board[i + 1][j] == this->BRICK) {
+                                        this->delta_step.x = -this->delta_step.x;
+                                    } else if (this->board[i][j + 1] == this->BORDER || this->board[i][j + 1] == this->BRICK) {
+                                        this->delta_step.y = -this->delta_step.y;
+                                    }
+                                    break;
+                                case Direction::TOP_RIGHT:
+                                    if (this->board[i + 1][j] == this->BORDER || this->board[i + 1][j] == this->BRICK) {
+                                        this->delta_step.x = -this->delta_step.x;
+                                    } else if (this->board[i][j - 1] == this->BORDER || this->board[i][j - 1] == this->BRICK) {
+                                        this->delta_step.y = -this->delta_step.y;
+                                    }
+                                    break;
+                                case Direction::BOTTOM_RIGHT:
+                                    if (this->board[i - 1][j] == this->BORDER || this->board[i - 1][j] == this->BRICK) {
+                                        this->delta_step.x = -this->delta_step.x;
+                                    } else if (this->board[i][j - 1] == this->BORDER || this->board[i][j - 1] == this->BRICK) {
+                                        this->delta_step.y = -this->delta_step.y;
+                                    }
+                                    break;
+                                case Direction::BOTTOM_LEFT:
+                                    if (this->board[i - 1][j] == this->BORDER || this->board[i - 1][j] == this->BRICK) {
+                                        this->delta_step.x = -this->delta_step.x;
+                                    } else if (this->board[i][j + 1] == this->BORDER || this->board[i][j + 1] == this->BRICK) {
+                                        this->delta_step.y = -this->delta_step.y;
+                                    }
+                                    break;
+                            }
+
+                            if (this->board[i][j] == this->BRICK) {
+                                this->board[i][j] = this->SPACE;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         this->ball += this->delta_step;
