@@ -186,6 +186,7 @@ void Breakout::move() {
 
                         if (this->board[i][j] == this->BRICK) {
                             this->board[i][j] = this->SPACE;
+                            this->score++;
                         }
                     }
                 }
