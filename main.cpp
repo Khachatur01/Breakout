@@ -1,7 +1,6 @@
-#include "game/main.h"
+#include "game/Breakout.h"
 
 int main() {
-
     Breakout breakout(20, 20);
 
     std::vector<std::vector<char>> board(20, std::vector<char>(20, breakout.SPACE));
